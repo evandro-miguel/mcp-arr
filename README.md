@@ -98,7 +98,8 @@ Add to your Claude Desktop config file:
         "READARR_URL": "http://localhost:8787",
         "READARR_API_KEY": "your-readarr-api-key",
         "PROWLARR_URL": "http://localhost:9696",
-        "PROWLARR_API_KEY": "your-prowlarr-api-key"
+        "PROWLARR_API_KEY": "your-prowlarr-api-key",
+        "METUBE_URL": "http://localhost:8081"
       }
     }
   }
@@ -119,7 +120,8 @@ Add to `~/.claude.json`:
         "SONARR_URL": "http://localhost:8989",
         "SONARR_API_KEY": "your-sonarr-api-key",
         "RADARR_URL": "http://localhost:7878",
-        "RADARR_API_KEY": "your-radarr-api-key"
+        "RADARR_API_KEY": "your-radarr-api-key",
+        "METUBE_URL": "http://localhost:8081"
       }
     }
   }
@@ -158,6 +160,11 @@ Add to `~/.claude.json`:
 - "Download the missing episodes for that series"
 - "Search for this specific movie"
 - "Grab that album I'm missing"
+
+### YouTube via MeTube (optional)
+Requires `METUBE_URL` in env.
+- "Add this playlist to yt-videos: <url>"
+- "Download audio-only to music/Playlists/<name>/code"
 - "Download all missing books for this author"
 
 ### Indexer Management

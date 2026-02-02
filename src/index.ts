@@ -11,6 +11,7 @@
  * - LIDARR_URL, LIDARR_API_KEY
  * - READARR_URL, READARR_API_KEY
  * - PROWLARR_URL, PROWLARR_API_KEY
+ * - METUBE_URL (optional, enables YouTube tools)
  */
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
@@ -29,6 +30,9 @@ import {
   ArrService,
 } from "./arr-client.js";
 import { trashClient, TrashService } from "./trash-client.js";
+import http from "node:http";
+import https from "node:https";
+import { URL } from "node:url";
 
 // Configuration from environment
 interface ServiceConfig {
@@ -48,6 +52,7 @@ const services: ServiceConfig[] = [
 
 // Check which services are configured
 const configuredServices = services.filter(s => s.url && s.apiKey);
+const METUBE_URL = process.env.METUBE_URL;
 
 if (configuredServices.length === 0) {
   console.error("Error: No *arr services configured. Set at least one pair of URL and API_KEY environment variables.");
@@ -98,6 +103,102 @@ const TOOLS: Tool[] = [
     },
   },
 ];
+
+// Optional MeTube (yt-dlp GUI) tools
+if (METUBE_URL) {
+  TOOLS.push(
+    {
+      name: "yt_add",
+      description: "Add a YouTube download to MeTube (yt-dlp GUI). Supports custom folder and audio-only mode.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          url: { type: "string", description: "Video or playlist URL" },
+          folder: { type: "string", description: "Custom directory relative to MeTube download root (e.g. yt-videos/Playlists/Name/tag)" },
+          audioOnly: { type: "boolean", description: "Download audio-only (uses bestaudio)" },
+          quality: { type: "string", description: "Quality preset (e.g. best). Defaults to best or audio when audioOnly=true" },
+          format: { type: "string", description: "yt-dlp format string (optional)" },
+          customNamePrefix: { type: "string", description: "Prefix for output filename" },
+          playlistItemLimit: { type: "number", description: "Limit number of playlist items" },
+          autoStart: { type: "boolean", description: "Auto-start download (default true)" },
+          splitByChapters: { type: "boolean", description: "Split by chapters" },
+          chapterTemplate: { type: "string", description: "Chapter output template" }
+        },
+        required: ["url"]
+      }
+    },
+    {
+      name: "yt_history",
+      description: "Get MeTube download history (queue, pending, done).",
+      inputSchema: { type: "object" as const, properties: {}, required: [] }
+    },
+    {
+      name: "yt_start",
+      description: "Start pending MeTube downloads by id(s).",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          ids: { type: "array", items: { type: "string" }, description: "Download IDs to start" }
+        },
+        required: ["ids"]
+      }
+    },
+    {
+      name: "yt_delete",
+      description: "Delete MeTube downloads from queue/done by id(s).",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          ids: { type: "array", items: { type: "string" }, description: "Download IDs to delete" },
+          where: { type: "string", enum: ["queue", "done"], description: "Where to delete from" }
+        },
+        required: ["ids", "where"]
+      }
+    }
+  );
+}
+
+async function metubeRequest(path: string, method: "GET" | "POST", body?: unknown) {
+  if (!METUBE_URL) throw new Error("METUBE_URL not configured");
+  const base = METUBE_URL.endsWith("/") ? METUBE_URL : `${METUBE_URL}/`;
+  const url = new URL(path.replace(/^\//, ""), base);
+  const data = body ? JSON.stringify(body) : undefined;
+  const lib = url.protocol === "https:" ? https : http;
+
+  return await new Promise<unknown>((resolve, reject) => {
+    const req = lib.request(
+      {
+        method,
+        hostname: url.hostname,
+        port: url.port || (url.protocol === "https:" ? 443 : 80),
+        path: `${url.pathname}${url.search}`,
+        headers: data
+          ? {
+              "Content-Type": "application/json",
+              "Content-Length": Buffer.byteLength(data),
+            }
+          : undefined,
+      },
+      (res) => {
+        let buf = "";
+        res.on("data", (c) => (buf += c));
+        res.on("end", () => {
+          if ((res.statusCode || 0) >= 400) {
+            return reject(new Error(`MeTube HTTP ${res.statusCode}: ${buf}`));
+          }
+          try {
+            resolve(buf ? JSON.parse(buf) : {});
+          } catch {
+            resolve(buf);
+          }
+        });
+      }
+    );
+    req.on("error", reject);
+    if (data) req.write(data);
+    req.end();
+  });
+}
 
 // Configuration review tools for each service
 // These are added dynamically based on configured services
@@ -788,6 +889,58 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return {
           content: [{ type: "text", text: JSON.stringify(statuses, null, 2) }],
         };
+      }
+
+      // MeTube (YouTube) tools
+      case "yt_add": {
+        const url = args?.url as string | undefined;
+        if (!url) throw new Error("Missing required parameter: url");
+        const audioOnly = Boolean(args?.audioOnly);
+        let quality = args?.quality as string | undefined;
+        let format = args?.format as string | undefined;
+        if (audioOnly) {
+          if (!quality) quality = "audio";
+          if (!format) format = "bestaudio";
+        } else if (!quality) {
+          quality = "best";
+        }
+        const payload: Record<string, unknown> = {
+          url,
+          quality,
+          format,
+          folder: args?.folder,
+          custom_name_prefix: args?.customNamePrefix ?? "",
+          playlist_item_limit: args?.playlistItemLimit,
+          auto_start: args?.autoStart ?? true,
+          split_by_chapters: args?.splitByChapters ?? false,
+          chapter_template: args?.chapterTemplate,
+        };
+        for (const key of Object.keys(payload)) {
+          if (payload[key] === undefined) delete payload[key];
+        }
+        const result = await metubeRequest("add", "POST", payload);
+        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+      }
+
+      case "yt_history": {
+        const result = await metubeRequest("history", "GET");
+        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+      }
+
+      case "yt_start": {
+        const ids = args?.ids as string[] | undefined;
+        if (!ids || !ids.length) throw new Error("Missing required parameter: ids");
+        const result = await metubeRequest("start", "POST", { ids });
+        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+      }
+
+      case "yt_delete": {
+        const ids = args?.ids as string[] | undefined;
+        const where = args?.where as "queue" | "done" | undefined;
+        if (!ids || !ids.length) throw new Error("Missing required parameter: ids");
+        if (!where) throw new Error("Missing required parameter: where");
+        const result = await metubeRequest("delete", "POST", { ids, where });
+        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
       }
 
       // Dynamic config tool handlers

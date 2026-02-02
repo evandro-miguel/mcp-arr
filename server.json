@@ -85,6 +85,13 @@
           "format": "string",
           "isSecret": true,
           "name": "PROWLARR_API_KEY"
+        },
+        {
+          "description": "MeTube server URL (enables YouTube tools)",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false,
+          "name": "METUBE_URL"
         }
       ]
     }

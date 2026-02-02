@@ -23,6 +23,54 @@
     }
   },
   {
+    "name": "yt_add",
+    "description": "Add a YouTube download to MeTube (yt-dlp GUI). Supports custom folder and audio-only mode.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "url": { "type": "string", "description": "Video or playlist URL" },
+        "folder": { "type": "string", "description": "Custom directory relative to MeTube download root" },
+        "audioOnly": { "type": "boolean", "description": "Download audio-only (uses bestaudio)" },
+        "quality": { "type": "string", "description": "Quality preset (e.g. best). Defaults to best or audio when audioOnly=true" },
+        "format": { "type": "string", "description": "yt-dlp format string (optional)" },
+        "customNamePrefix": { "type": "string", "description": "Prefix for output filename" },
+        "playlistItemLimit": { "type": "number", "description": "Limit number of playlist items" },
+        "autoStart": { "type": "boolean", "description": "Auto-start download (default true)" },
+        "splitByChapters": { "type": "boolean", "description": "Split by chapters" },
+        "chapterTemplate": { "type": "string", "description": "Chapter output template" }
+      },
+      "required": ["url"]
+    }
+  },
+  {
+    "name": "yt_history",
+    "description": "Get MeTube download history (queue, pending, done).",
+    "inputSchema": { "type": "object", "properties": {}, "required": [] }
+  },
+  {
+    "name": "yt_start",
+    "description": "Start pending MeTube downloads by id(s).",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "ids": { "type": "array", "items": { "type": "string" }, "description": "Download IDs to start" }
+      },
+      "required": ["ids"]
+    }
+  },
+  {
+    "name": "yt_delete",
+    "description": "Delete MeTube downloads from queue/done by id(s).",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "ids": { "type": "array", "items": { "type": "string" }, "description": "Download IDs to delete" },
+        "where": { "type": "string", "enum": ["queue", "done"], "description": "Where to delete from" }
+      },
+      "required": ["ids", "where"]
+    }
+  },
+  {
     "name": "sonarr_get_series",
     "description": "Get all TV series in Sonarr library",
     "inputSchema": {
